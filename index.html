@@ -221,7 +221,7 @@
                         
                         <div class="border-t md:border-t-0 md:border-l pt-6 md:pt-0 md:pl-6">
                             <h3 class="text-lg font-bold text-gray-900 mb-2">Device Migration & Backup</h3>
-                            <p class="text-sm text-gray-600 mb-4">Move your inventory, menus, settings, and outstanding ledger totals smoothly to another tablet.</p>
+                            <p class="text-sm text-gray-600 mb-4">Back up or restore your hourly rate, inventory, sales, and pending payments without affecting active table timers.</p>
                             <div class="flex flex-col gap-3">
                                 <button @click="exportBackupFile" class="bg-gray-800 hover:bg-black text-white text-sm px-4 py-2.5 rounded-lg font-semibold shadow transition text-center w-full max-w-xs">
                                     📦 Export Backup Data File
@@ -1361,25 +1361,49 @@
                 };
                 const removeInventoryItem = (id) => { inventory.value = inventory.value.filter(i => i.id !== id); saveSilent(); };
 
-                // BACKUP EXPORTS
-                const exportBackupFile = async () => {
-                    const record = await getDBRecord();
-                    const blob = new Blob([JSON.stringify(record || {})], { type: 'application/json' });
-                    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `YBH-Backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
+                // SELECTIVE BACKUP & IMPORT (HOURLY RATE, INVENTORY, SALES & PENDING PAYMENTS)
+                const exportBackupFile = () => {
+                    const selectiveBackup = {
+                        hourlyRate: Number(hourlyRate.value),
+                        inventory: JSON.parse(JSON.stringify(inventory.value)),
+                        sales: JSON.parse(JSON.stringify(sales.value)),
+                        toCollectLedger: JSON.parse(JSON.stringify(toCollectLedger.value))
+                    };
+                    const blob = new Blob([JSON.stringify(selectiveBackup, null, 2)], { type: 'application/json' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `YBH-Backup-${new Date().toISOString().slice(0,10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
                 };
                 const importBackupFile = (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
                     const reader = new FileReader();
                     reader.onload = async (evt) => { 
                         try {
                             const data = JSON.parse(evt.target.result);
-                            await setDBRecord(data); 
-                            await loadData(); 
-                            alert('Data imported successfully!'); 
+                            if (data.hourlyRate !== undefined && !isNaN(Number(data.hourlyRate))) {
+                                hourlyRate.value = Number(data.hourlyRate);
+                            }
+                            if (Array.isArray(data.inventory)) {
+                                inventory.value = data.inventory;
+                            }
+                            if (Array.isArray(data.sales)) {
+                                sales.value = data.sales;
+                            }
+                            if (data.toCollectLedger && typeof data.toCollectLedger === 'object') {
+                                toCollectLedger.value = data.toCollectLedger;
+                            }
+                            recomputeRunningTimers();
+                            await saveSilent();
+                            e.target.value = '';
+                            alert('Hourly rate, inventory, sales, and pending payments imported without changing active timers!'); 
                         } catch(err) {
                             alert('Failed to parse backup JSON file.');
                         }
                     };
-                    reader.readAsText(e.target.files[0]);
+                    reader.readAsText(file);
                 };
 
                 // REPORTS LOGIC ENGINE 
