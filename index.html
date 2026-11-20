@@ -521,6 +521,17 @@
                         <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Customer / Group Identification:</label>
                         <input type="text" v-model="sessionInputName" placeholder="Enter guest profile label..." class="w-full border p-2 rounded text-sm focus:outline-blue-500" />
                     </div>
+                    <div class="bg-blue-50 p-3 rounded border border-blue-200 space-y-2">
+                        <label class="flex items-center gap-2 font-semibold text-sm text-gray-800 cursor-pointer">
+                            <input type="checkbox" v-model="sessionManualStart" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" />
+                            Set Past Start Time Manually
+                        </label>
+                        <div v-if="sessionManualStart" class="pl-6 pt-1">
+                            <label class="block text-xs font-bold text-blue-900 uppercase mb-1">Actual Start Time:</label>
+                            <input type="time" v-model="sessionStartTimeInput" class="border border-blue-300 p-2 rounded text-sm font-mono bg-white focus:outline-blue-500" />
+                            <p class="text-xs text-gray-500 mt-1">Elapsed time & rent calculate immediately upon opening the table.</p>
+                        </div>
+                    </div>
                     <div class="bg-gray-50 p-3 rounded border">
                         <label class="flex items-center gap-2 font-semibold text-sm text-gray-800 cursor-pointer">
                             <input type="checkbox" v-model="sessionIsAdmin" class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500" />
@@ -956,6 +967,8 @@
 
                 const startingTableId = ref(null);
                 const sessionInputName = ref('');
+                const sessionManualStart = ref(false);
+                const sessionStartTimeInput = ref('');
                 const sessionIsAdmin = ref(false);
                 const sessionAdminNotes = ref('');
                 const sessionAdminCost = ref(0);
@@ -1116,20 +1129,48 @@
                     }
                 };
 
+                const getCurrentTimeHHMM = () => {
+                    const now = new Date();
+                    const hh = String(now.getHours()).padStart(2, '0');
+                    const mm = String(now.getMinutes()).padStart(2, '0');
+                    return `${hh}:${mm}`;
+                };
+
+                const parseManualStartTimestamp = (hhmmStr) => {
+                    if (!hhmmStr || !hhmmStr.includes(':')) return Date.now();
+                    const [hours, minutes] = hhmmStr.split(':').map(Number);
+                    if (isNaN(hours) || isNaN(minutes)) return Date.now();
+
+                    const candidate = new Date();
+                    candidate.setHours(hours, minutes, 0, 0);
+
+                    if (candidate.getTime() > Date.now()) {
+                        candidate.setDate(candidate.getDate() - 1);
+                    }
+                    return candidate.getTime();
+                };
+
                 const openStartSessionModal = (id) => {
                     startingTableId.value = id;
                     sessionInputName.value = waitlist.value.length > 0 ? waitlist.value[0] : '';
+                    sessionManualStart.value = false;
+                    sessionStartTimeInput.value = getCurrentTimeHHMM();
                     sessionIsAdmin.value = false;
+                    sessionAdminNotes.value = '';
                     sessionAdminCost.value = 0;
                 };
 
                 const confirmStartSession = () => {
                     const t = tables.value.find(x => x.id === startingTableId.value);
                     if (t) {
+                        const chosenStart = sessionManualStart.value
+                            ? parseManualStartTimestamp(sessionStartTimeInput.value)
+                            : Date.now();
+
                         t.status = 'occupied';
                         t.customerName = sessionInputName.value.trim() || 'Guest Player';
-                        t.startTime = Date.now();
-                        t.elapsedSeconds = 0;
+                        t.startTime = chosenStart;
+                        t.elapsedSeconds = Math.max(0, Math.floor((Date.now() - chosenStart) / 1000));
                         t.orders = [];
                         t.isPaused = false;
                         t.isAdminMode = sessionIsAdmin.value;
@@ -1437,7 +1478,7 @@
                 return {
                     activeTab, hourlyRate, inventory, tables, walkInCustomers, sales, expenses, waitlist, toCollectLedger,
                     newItemName, newItemPrice, newExpenseDesc, newExpenseAmt, newWaitlistName, inventorySearchQuery,
-                    startingTableId, sessionInputName, sessionIsAdmin, sessionAdminNotes, sessionAdminCost,
+                    startingTableId, sessionInputName, sessionManualStart, sessionStartTimeInput, sessionIsAdmin, sessionAdminNotes, sessionAdminCost,
                     transferringTableId, transferTargetTableId, managingTableId, managingWalkInId,
                     selectedItemName, orderQty, checkoutPaymentType, checkoutPartialAmountPaid, checkoutDiscount, amountReceived, calculatedChange, walkInCalculatedChange, collectPayments, collectPaymentsReceived, calculateCollectChange,
                     reportDateLabel, selectedReportDateString, filteredSales, filteredExpenses, totalSalesAmount, totalExpensesAmount,
